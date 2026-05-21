@@ -1,0 +1,29 @@
+{
+  "mcp_prefix": "github",
+  "base_url": "https://api.github.com",
+  "api_keys": [
+    "change-me-github-mcp-key"
+  ],
+  "auth": {
+    "type": "Bearer",
+    "token": "ghp_secureSecretHere"
+  },
+  "default_headers": {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  },
+  "exposed_endpoints": [
+    {
+      "path": "/repos/{owner}/{repo}/issues",
+      "method": "GET",
+      "mcp_tool_name": "github_list_issues",
+      "description": "Lists issues for a specific repository."
+    },
+    {
+      "path": "/repos/{owner}/{repo}/issues",
+      "method": "POST",
+      "mcp_tool_name": "github_create_issue",
+      "description": "Creates a new issue in a repository."
+    }
+  ]
+}

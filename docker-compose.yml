@@ -1,0 +1,57 @@
+---
+services:
+  aegis-api-mcp:
+    image: ghcr.io/sparksbenjamin/aegis-api-mcp:${AEGIS_IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: aegis-api-mcp
+
+    environment:
+      AEGIS_TRANSPORT: sse
+      AEGIS_CONFIGS_DIR: /configs
+      AEGIS_SSE_ADDR: ":${AEGIS_SSE_PORT:-8443}"
+      AEGIS_SSE_BASE_URL: ${AEGIS_SSE_BASE_URL:-http://localhost:8443}
+      AEGIS_SSE_BASE_PATH: /mcp
+      AEGIS_SSE_DISABLE_TLS: "${AEGIS_SSE_DISABLE_TLS:-true}"
+      # Uncomment for HTTPS:
+      # AEGIS_SSE_TLS_CERT_FILE: /certs/tls.crt
+      # AEGIS_SSE_TLS_KEY_FILE: /certs/tls.key
+
+    ports:
+      - "${AEGIS_SSE_PORT:-8443}:${AEGIS_SSE_PORT:-8443}"
+
+    volumes:
+      - type: bind
+        source: ./configs
+        target: /configs
+
+      # Uncomment for HTTPS:
+      # - type: bind
+      #   source: ./certs
+      #   target: /certs
+      #   read_only: true
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=10m,mode=1777
+
+    restart: on-failure:5
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          memory: 32M

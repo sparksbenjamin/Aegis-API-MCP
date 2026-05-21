@@ -1,0 +1,113 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+
+	"aegis-api-mcp/internal/audit"
+	aegismcp "aegis-api-mcp/internal/mcp"
+)
+
+const banner = `
+=============================================
+           Aegis-API-MCP v1.0.0
+    Secure MCP Gateway for HTTP APIs
+=============================================
+`
+
+func main() {
+	fmt.Fprint(os.Stderr, banner)
+
+	logger := audit.New()
+	configsDir := resolveDir("AEGIS_CONFIGS_DIR", "configs", "/configs")
+
+	srv, err := aegismcp.NewAegisServer(configsDir, logger)
+	if err != nil {
+		log.Fatalf("[AEGIS] Fatal: failed to initialize server: %v", err)
+	}
+
+	transport := strings.ToLower(strings.TrimSpace(os.Getenv("AEGIS_TRANSPORT")))
+	if transport == "" {
+		transport = "stdio"
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		fmt.Fprintf(os.Stderr, "\n[AEGIS] Received signal %s - shutting down.\n", sig)
+		srv.Stop()
+		if transport == "stdio" {
+			os.Exit(0)
+		}
+	}()
+
+	fmt.Fprintf(
+		os.Stderr,
+		"[AEGIS] Server starting - transport: %s | configs: %s\n",
+		transport,
+		configsDir,
+	)
+
+	err = startServer(srv, transport)
+	if err != nil {
+		log.Fatalf("[AEGIS] Server exited with error: %v", err)
+	}
+}
+
+func startServer(srv *aegismcp.AegisServer, transport string) error {
+	switch transport {
+	case "stdio":
+		return srv.StartStdio()
+	case "sse":
+		disableTLS, err := envBool("AEGIS_SSE_DISABLE_TLS")
+		if err != nil {
+			return err
+		}
+		return srv.StartSSE(aegismcp.SSEConfig{
+			Addr:        envOrDefault("AEGIS_SSE_ADDR", ":8443"),
+			BaseURL:     strings.TrimSpace(os.Getenv("AEGIS_SSE_BASE_URL")),
+			BasePath:    envOrDefault("AEGIS_SSE_BASE_PATH", "/mcp"),
+			TLSCertFile: strings.TrimSpace(os.Getenv("AEGIS_SSE_TLS_CERT_FILE")),
+			TLSKeyFile:  strings.TrimSpace(os.Getenv("AEGIS_SSE_TLS_KEY_FILE")),
+			DisableTLS:  disableTLS,
+		})
+	default:
+		return fmt.Errorf("unsupported AEGIS_TRANSPORT %q", transport)
+	}
+}
+
+func resolveDir(key, localFallback, containerFallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	if info, err := os.Stat(localFallback); err == nil && info.IsDir() {
+		return localFallback
+	}
+	return containerFallback
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func envBool(key string) (bool, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return false, nil
+	}
+
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("invalid boolean value for %s: %q", key, raw)
+	}
+	return value, nil
+}
